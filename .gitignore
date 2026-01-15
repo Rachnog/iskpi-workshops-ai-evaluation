@@ -79,5 +79,10 @@ htmlcov/
 *.key
 credentials.json
 
-.claude/
-CLAUDE.md
+# Claude Code (root only)
+/.claude/
+/CLAUDE.md
+
+# But include project skills
+!claude-code-work/.claude/
+!claude-code-work/.claude/skills/

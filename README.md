@@ -11,6 +11,7 @@ This workshop demonstrates three progressive approaches to AI evaluation in a fi
 | **1. Quant Portfolio** | Mathematical optimization | Backtesting, Sharpe ratio, drawdown |
 | **2. LLM Translation** | Narrative → config translation | Field accuracy, LLM-as-Judge, Langfuse experiments |
 | **3. AI Agents (A2A)** | Agent-to-Agent evaluation | Green/Purple protocol, iterative scoring |
+| **4. Skills-Based Agents** | Claude Skills architecture | Skills vs Tools comparison, A2A evaluation |
 
 ## Quick Start
 
@@ -38,6 +39,7 @@ Create a `.env` file:
 ```env
 # Required
 GEMINI_API_KEY=your-gemini-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key  # For Skills-based agent (Notebook 4)
 
 # Langfuse (for tracing and experiments)
 LANGFUSE_PUBLIC_KEY=your-langfuse-public-key
@@ -95,6 +97,35 @@ print(f"Score: {result.overall_score}/10")
 print(f"Messages: {len(result.conversation)}")  # 11 messages
 ```
 
+### Notebook 4: Skills-Based Agents
+
+Demonstrates Claude's Agent Skills architecture using Anthropic SDK directly:
+
+- **Native Skills**: Uses Anthropic SDK with bash tool to read SKILL.md files
+- **Progressive Disclosure**: Agent reads skill instructions when needed
+- **Code Execution**: Runs Python code via bash based on skill instructions
+- **A2A Comparison**: Compare Skills-based vs Tools-based agents
+
+```python
+from agents import create_native_skills_agent, run_native_skills_agent, run_native_skills_a2a_evaluation
+
+# Create native Anthropic Skills agent
+native_agent = create_native_skills_agent()
+
+# Agent reads skills via: cat .claude/skills/optimization-execution/SKILL.md
+# Agent runs code via: python3 -c "from portfolio_optimizer import ..."
+
+result = run_native_skills_agent(native_agent, "Build a conservative portfolio")
+
+# A2A evaluation comparing Skills vs Tools
+a2a_result = run_native_skills_a2a_evaluation(
+    task_description="Build a portfolio",
+    native_agent_config=native_agent,
+    evaluator_agent=green_agent,
+    max_rounds=3
+)
+```
+
 ## Project Structure
 
 ```
@@ -102,9 +133,16 @@ claude-code-work/
 ├── 1_quant_portfolio_optimization.ipynb  # Portfolio optimization
 ├── 2_llm_translation_evaluation.ipynb    # LLM translation + Langfuse
 ├── 3_ai_agents_a2a_evaluation.ipynb      # A2A evaluation protocol
+├── 4_skills_based_agents.ipynb           # Skills architecture + comparison
 ├── portfolio_optimizer.py                # MVO, HRP, backtesting
 ├── llm_utils.py                          # Translation, evaluation, experiments
-├── agents.py                             # Green/Purple agents, A2A protocol
+├── agents.py                             # Green/Purple agents, Skills, A2A protocol
+├── .claude/skills/                       # Skills definitions (SKILL.md files)
+│   ├── universe-selection/
+│   ├── optimization-execution/
+│   ├── risk-assessment/
+│   ├── backtesting/
+│   └── portfolio-comparison/
 ├── scenarios.json                        # Investor personas
 ├── evaluation_dataset.json               # Evaluation dataset + RAG knowledge
 └── pyproject.toml                        # Dependencies
@@ -113,16 +151,10 @@ claude-code-work/
 ## Key Dependencies
 
 - `langchain` + `langchain-google-genai` - Agent framework with Gemini
+- `anthropic` - Anthropic SDK for native Skills agent
 - `langfuse` - LLM observability, experiments, datasets
 - `pypfopt` - Portfolio optimization
 - `yfinance` - Market data
-
-## PDF Exports
-
-Pre-executed notebooks are available as PDFs in `claude-code-work/`:
-- `1_quant_portfolio_optimization.pdf`
-- `2_llm_translation_evaluation.pdf`
-- `3_ai_agents_a2a_evaluation.pdf`
 
 ## License
 

@@ -31,9 +31,16 @@ All notebooks use consistent investor personas for evaluation:
 ├── 1_quant_portfolio_optimization.ipynb  # MVO, HRP, backtesting
 ├── 2_llm_translation_evaluation.ipynb    # LLM translation + Langfuse experiments
 ├── 3_ai_agents_a2a_evaluation.ipynb      # A2A protocol with Green/Purple agents
+├── 4_skills_based_agents.ipynb           # Skills architecture comparison
 ├── portfolio_optimizer.py                # Portfolio optimization functions
 ├── llm_utils.py                          # Translation and evaluation utilities
-├── agents.py                             # Agent definitions and A2A protocol
+├── agents.py                             # Agent definitions, Skills, A2A protocol
+├── .claude/skills/                       # Skills definitions
+│   ├── universe-selection/SKILL.md
+│   ├── optimization-execution/SKILL.md
+│   ├── risk-assessment/SKILL.md
+│   ├── backtesting/SKILL.md
+│   └── portfolio-comparison/SKILL.md
 ├── scenarios.json                        # Investor personas and test scenarios
 ├── evaluation_dataset.json               # Evaluation data + RAG knowledge base
 └── pyproject.toml                        # Package configuration
@@ -46,6 +53,7 @@ Create `.env` file:
 ```env
 # Required
 GEMINI_API_KEY=your-key
+ANTHROPIC_API_KEY=your-key  # For Skills-based agent (Notebook 4)
 
 # Langfuse (for tracing and experiments)
 LANGFUSE_SECRET_KEY=your-key
@@ -201,6 +209,88 @@ for dim, score in result.scores.items():
 
 ---
 
+## Notebook 4: Skills-Based Agents
+
+Demonstrates Claude's Agent Skills architecture using Anthropic SDK with native bash tool.
+
+**Topics:** Native Skills Architecture, Bash Tool Execution, Tools vs Skills Comparison, A2A Evaluation
+
+**Skills Architecture:**
+
+Skills are modular capabilities defined in `.claude/skills/` directory:
+
+```
+.claude/skills/
+├── universe-selection/SKILL.md    # Asset universe selection with decision matrix
+├── optimization-execution/SKILL.md # MVO/HRP with ready-to-run scripts
+├── risk-assessment/SKILL.md       # Risk metrics evaluation
+├── backtesting/SKILL.md           # Historical validation
+└── portfolio-comparison/SKILL.md  # Compare alternatives
+```
+
+**SKILL.md Format:**
+```markdown
+---
+name: optimization-execution
+description: Execute portfolio optimization using MVO or HRP...
+---
+
+# Portfolio Optimization Skill
+
+## Quick Decision Guide
+| Investor Profile | Method | Target |
+|-----------------|--------|--------|
+| Conservative | MVO | min_volatility |
+| Balanced | MVO | max_sharpe |
+
+## Complete Ready-to-Run Script
+[Python code that can be copied and executed...]
+```
+
+**Key Functions:**
+```python
+from agents import (
+    SkillLoader,
+    create_native_skills_agent,
+    run_native_skills_agent,
+    run_native_skills_a2a_evaluation
+)
+
+# Load skills metadata
+skill_loader = SkillLoader()
+print(skill_loader.get_skill_descriptions())
+
+# Create Native Skills Agent (uses Anthropic Claude with bash tool)
+native_agent = create_native_skills_agent()
+
+# Agent workflow:
+# 1. Reads skill: cat .claude/skills/optimization-execution/SKILL.md
+# 2. Runs code: python3 -c "from portfolio_optimizer import ..."
+# 3. Explains results to investor
+
+result = run_native_skills_agent(native_agent, "Build a conservative portfolio")
+
+# A2A evaluation comparing Skills vs Tools
+a2a_result = run_native_skills_a2a_evaluation(
+    task_description="Build a portfolio",
+    native_agent_config=native_agent,
+    evaluator_agent=green_agent,
+    max_rounds=3
+)
+```
+
+**Tools vs Skills Comparison:**
+
+| Aspect | Tools-based | Native Skills |
+|--------|-------------|---------------|
+| LLM | Gemini | Anthropic Claude |
+| Tool calls | Function calls | bash (read files + run code) |
+| Instructions | In code/docstrings | SKILL.md files |
+| Code execution | Wrapper functions | Direct Python via bash |
+| Updates | Code changes | Edit markdown files |
+
+---
+
 ## Evaluation Summary
 
 | Notebook | Evaluation Type | Key Metrics |
@@ -208,6 +298,7 @@ for dim, score in result.scores.items():
 | 1. Quant | Backtesting | Sharpe > 1.0, Drawdown > -20% |
 | 2. LLM | Field Accuracy + LLM Judge | Accuracy > 90%, Judge > 8/10 |
 | 3. Agents | A2A Protocol | Overall Score > 7/10 |
+| 4. Skills | Skills A2A Protocol | Skills Usage Score, Comparison |
 
 ## Langfuse Tracing
 
