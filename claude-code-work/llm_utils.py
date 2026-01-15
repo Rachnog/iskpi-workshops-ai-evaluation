@@ -363,21 +363,282 @@ def evaluate_single(
 
 
 # =============================================================================
-# LANGFUSE NATIVE DATASET AND SCORING
+# LANGFUSE EXPERIMENTS (following official SDK pattern)
 # =============================================================================
+
+# Import Evaluation class for evaluators
+try:
+    from langfuse import Evaluation
+    EVALUATION_AVAILABLE = True
+except ImportError:
+    EVALUATION_AVAILABLE = False
+    Evaluation = None
+
+
+def create_translation_task(provider: LLMProvider = LLMProvider.GEMINI):
+    """
+    Create a task function for translation experiments.
+
+    Returns a function compatible with langfuse.run_experiment().
+    """
+    def translation_task(*, item, **kwargs):
+        """Translate narrative to portfolio config."""
+        # Handle both dict items (local data) and dataset items
+        if hasattr(item, 'input'):
+            narrative = item.input.get("narrative") or item.input.get("text")
+        else:
+            narrative = item.get("input", {}).get("narrative") or item.get("narrative")
+
+        result = translate_narrative(narrative, provider=provider)
+
+        if result["status"] == "success":
+            return result["config"]
+        else:
+            return {"error": result.get("error"), "status": "failed"}
+
+    return translation_task
+
+
+def field_accuracy_evaluator(*, output, expected_output, **kwargs):
+    """
+    Evaluator: Compare predicted vs expected config fields.
+
+    Returns Evaluation with field accuracy score (0-1).
+    """
+    if not EVALUATION_AVAILABLE:
+        return None
+
+    if not output or "error" in output:
+        return Evaluation(name="field_accuracy", value=0.0, comment="Translation failed")
+
+    # Compute field-by-field accuracy
+    results = {}
+    critical_fields = ["optimization_target", "universe", "risk_tolerance", "allow_short"]
+    for field in critical_fields:
+        if field in expected_output:
+            results[field] = 1.0 if output.get(field) == expected_output.get(field) else 0.0
+
+    numeric_fields = ["time_horizon_years", "max_position", "target_return"]
+    for field in numeric_fields:
+        if field in expected_output and expected_output[field] is not None:
+            pred_val = output.get(field)
+            exp_val = expected_output[field]
+            if pred_val is not None:
+                tolerance = 0.2 * abs(exp_val) if exp_val != 0 else 0.1
+                results[field] = 1.0 if abs(pred_val - exp_val) <= tolerance else 0.0
+            else:
+                results[field] = 0.0
+
+    accuracy = sum(results.values()) / len(results) if results else 0.0
+
+    # Build comment showing which fields matched
+    matches = [f for f, v in results.items() if v == 1.0]
+    misses = [f for f, v in results.items() if v == 0.0]
+    comment = f"Matched: {matches}, Missed: {misses}"
+
+    return Evaluation(name="field_accuracy", value=accuracy, comment=comment)
+
+
+def create_llm_judge_evaluator(provider: LLMProvider = LLMProvider.GEMINI):
+    """
+    Create an LLM-as-judge evaluator function.
+
+    Returns an evaluator compatible with langfuse.run_experiment().
+    """
+    def llm_judge_evaluator(*, input, output, expected_output, **kwargs):
+        """Use LLM to judge translation quality."""
+        if not EVALUATION_AVAILABLE:
+            return None
+
+        if not output or "error" in output:
+            return Evaluation(name="llm_judge", value=0.0, comment="Translation failed")
+
+        # Get narrative from input
+        if hasattr(input, 'get'):
+            narrative = input.get("narrative") or input.get("text", "")
+        else:
+            narrative = str(input)
+
+        # Call LLM judge
+        scores = llm_as_judge(narrative, output, expected_output, provider=provider)
+
+        overall = scores.get("overall_score", 0) / 10.0  # Normalize to 0-1
+        feedback = scores.get("feedback", "")
+
+        return Evaluation(name="llm_judge", value=overall, comment=feedback)
+
+    return llm_judge_evaluator
+
+
+def avg_accuracy_evaluator(*, item_results, **kwargs):
+    """
+    Run-level evaluator: Calculate average field accuracy across all items.
+    """
+    if not EVALUATION_AVAILABLE:
+        return None
+
+    accuracies = [
+        eval.value for result in item_results
+        for eval in (result.evaluations or [])
+        if eval.name == "field_accuracy" and eval.value is not None
+    ]
+
+    if not accuracies:
+        return Evaluation(name="avg_field_accuracy", value=None, comment="No accuracy scores")
+
+    avg = sum(accuracies) / len(accuracies)
+    return Evaluation(
+        name="avg_field_accuracy",
+        value=avg,
+        comment=f"Average across {len(accuracies)} items: {avg:.2%}"
+    )
+
+
+def avg_llm_score_evaluator(*, item_results, **kwargs):
+    """
+    Run-level evaluator: Calculate average LLM judge score across all items.
+    """
+    if not EVALUATION_AVAILABLE:
+        return None
+
+    scores = [
+        eval.value for result in item_results
+        for eval in (result.evaluations or [])
+        if eval.name == "llm_judge" and eval.value is not None
+    ]
+
+    if not scores:
+        return Evaluation(name="avg_llm_judge", value=None, comment="No LLM scores")
+
+    avg = sum(scores) / len(scores)
+    return Evaluation(
+        name="avg_llm_judge",
+        value=avg,
+        comment=f"Average across {len(scores)} items: {avg:.1%}"
+    )
+
+
+def run_translation_experiment(
+    experiment_name: str,
+    data: List[Dict[str, Any]],
+    provider: LLMProvider = LLMProvider.GEMINI,
+    description: str = None,
+    include_llm_judge: bool = True
+):
+    """
+    Run a translation experiment using Langfuse's run_experiment() API.
+
+    Args:
+        experiment_name: Name for this experiment
+        data: List of dicts with 'input' (narrative) and 'expected_output' (config)
+        provider: LLM provider to use
+        description: Optional experiment description
+        include_llm_judge: Whether to include LLM-as-judge evaluation
+
+    Returns:
+        Experiment result object from Langfuse
+    """
+    langfuse = get_client()
+    if not langfuse:
+        raise RuntimeError("Langfuse client not available")
+
+    # Create task and evaluators
+    task = create_translation_task(provider)
+
+    evaluators = [field_accuracy_evaluator]
+    if include_llm_judge:
+        evaluators.append(create_llm_judge_evaluator(provider))
+
+    run_evaluators = [avg_accuracy_evaluator]
+    if include_llm_judge:
+        run_evaluators.append(avg_llm_score_evaluator)
+
+    # Run experiment
+    print(f"Running experiment: {experiment_name}")
+    print(f"Data items: {len(data)}")
+    print(f"Provider: {provider.value}")
+    print(f"Evaluators: field_accuracy" + (", llm_judge" if include_llm_judge else ""))
+    print()
+
+    result = langfuse.run_experiment(
+        name=experiment_name,
+        description=description or f"Portfolio translation evaluation with {provider.value}",
+        data=data,
+        task=task,
+        evaluators=evaluators,
+        run_evaluators=run_evaluators
+    )
+
+    return result
+
+
+def run_dataset_experiment(
+    dataset_name: str,
+    run_name: str,
+    provider: LLMProvider = LLMProvider.GEMINI,
+    description: str = None,
+    include_llm_judge: bool = True
+):
+    """
+    Run experiment on a Langfuse dataset using dataset.run_experiment() API.
+
+    Args:
+        dataset_name: Name of the Langfuse dataset
+        run_name: Name for this experiment run
+        provider: LLM provider to use
+        description: Optional run description
+        include_llm_judge: Whether to include LLM-as-judge evaluation
+
+    Returns:
+        Experiment result object from Langfuse
+    """
+    langfuse = get_client()
+    if not langfuse:
+        raise RuntimeError("Langfuse client not available")
+
+    # Get dataset
+    dataset = langfuse.get_dataset(name=dataset_name)
+
+    # Create task and evaluators
+    task = create_translation_task(provider)
+
+    evaluators = [field_accuracy_evaluator]
+    if include_llm_judge:
+        evaluators.append(create_llm_judge_evaluator(provider))
+
+    run_evaluators = [avg_accuracy_evaluator]
+    if include_llm_judge:
+        run_evaluators.append(avg_llm_score_evaluator)
+
+    print(f"Running experiment: {run_name}")
+    print(f"Dataset: {dataset_name}")
+    print(f"Provider: {provider.value}")
+    print(f"Evaluators: field_accuracy" + (", llm_judge" if include_llm_judge else ""))
+    print()
+
+    result = dataset.run_experiment(
+        name=run_name,
+        description=description or f"Evaluation run with {provider.value}",
+        task=task,
+        evaluators=evaluators,
+        run_evaluators=run_evaluators
+    )
+
+    return result
+
 
 def create_langfuse_dataset(
     dataset_name: str,
     items: List[Dict[str, Any]],
     description: str = None
-) -> Any:
+):
     """
-    Create or update a Langfuse dataset with evaluation items.
+    Create a Langfuse dataset with evaluation items.
 
     Args:
-        dataset_name: Name for the dataset in Langfuse
-        items: List of dicts with 'input' (narrative) and 'expected_output' (config)
-        description: Optional dataset description
+        dataset_name: Name for the dataset
+        items: List of dicts with 'input' and 'expected_output'
+        description: Optional description
 
     Returns:
         Langfuse dataset object
@@ -386,13 +647,13 @@ def create_langfuse_dataset(
     if not langfuse:
         raise RuntimeError("Langfuse client not available")
 
-    # Create or get the dataset
+    # Create dataset
     dataset = langfuse.create_dataset(
         name=dataset_name,
         description=description or "Portfolio translation evaluation dataset"
     )
 
-    # Add items to the dataset
+    # Add items
     for i, item in enumerate(items):
         langfuse.create_dataset_item(
             dataset_name=dataset_name,
@@ -400,141 +661,11 @@ def create_langfuse_dataset(
             expected_output=item.get("expected_output", item.get("expected")),
             metadata={"index": i}
         )
-        print(f"  Added item {i+1}/{len(items)} to dataset")
+        print(f"  Added item {i+1}/{len(items)}")
 
     langfuse.flush()
     print(f"\nDataset '{dataset_name}' created with {len(items)} items")
     return dataset
-
-
-def run_dataset_experiment(
-    dataset_name: str,
-    run_name: str,
-    provider: LLMProvider = LLMProvider.GEMINI,
-    run_description: str = None
-) -> Dict[str, Any]:
-    """
-    Run translation + evaluation experiment on a Langfuse dataset.
-
-    Uses Langfuse native features:
-    - item.run() context manager for automatic trace linking
-    - root_span.score_trace() for native scoring
-
-    Args:
-        dataset_name: Name of the Langfuse dataset
-        run_name: Name for this experiment run
-        provider: LLM provider to use
-        run_description: Optional run description
-
-    Returns:
-        Dict with experiment results and statistics
-    """
-    langfuse = get_client()
-    if not langfuse:
-        raise RuntimeError("Langfuse client not available")
-
-    # Fetch the dataset
-    dataset = langfuse.get_dataset(name=dataset_name)
-    print(f"Running experiment '{run_name}' on dataset '{dataset_name}'")
-    print(f"Dataset has {len(dataset.items)} items\n")
-
-    results = []
-
-    for i, item in enumerate(dataset.items):
-        print(f"Processing item {i+1}/{len(dataset.items)}...")
-
-        # Use native Langfuse context manager for automatic trace linking
-        with item.run(
-            run_name=run_name,
-            run_description=run_description or f"Translation evaluation run",
-            run_metadata={"provider": provider.value, "index": i}
-        ) as root_span:
-
-            narrative = item.input.get("narrative") or item.input.get("text")
-            expected = item.expected_output
-
-            # Step 1: Translate
-            translation = translate_narrative(narrative, provider=provider)
-
-            if translation["status"] != "success":
-                print(f"  Translation failed: {translation.get('error')}")
-                root_span.score_trace(name="translation_success", value=0)
-                results.append({"index": i, "status": "failed", "error": translation.get("error")})
-                continue
-
-            predicted = translation["config"]
-
-            # Step 2: Compute field accuracy
-            field_accuracy = compute_field_accuracy(predicted, expected)
-            overall_accuracy = field_accuracy["overall_accuracy"]
-
-            # Step 3: LLM-as-judge evaluation
-            llm_scores = llm_as_judge(narrative, predicted, expected, provider=provider)
-            overall_llm_score = llm_scores.get("overall_score", 0)
-
-            # Score the trace using Langfuse native scoring
-            root_span.score_trace(
-                name="field_accuracy",
-                value=overall_accuracy,
-                comment=f"Fields: {json.dumps({k: v for k, v in field_accuracy.items() if k != 'overall_accuracy'})}"
-            )
-
-            root_span.score_trace(
-                name="llm_judge_score",
-                value=overall_llm_score / 10.0,  # Normalize to 0-1
-                comment=llm_scores.get("feedback", "")
-            )
-
-            # Individual dimension scores
-            for dim in ["optimization_target_score", "universe_score", "risk_assessment_score", "constraints_score"]:
-                if dim in llm_scores:
-                    root_span.score_trace(
-                        name=dim,
-                        value=llm_scores[dim] / 10.0
-                    )
-
-            results.append({
-                "index": i,
-                "status": "success",
-                "field_accuracy": overall_accuracy,
-                "llm_score": overall_llm_score,
-                "predicted": predicted
-            })
-
-            print(f"  Field accuracy: {overall_accuracy:.2%}, LLM score: {overall_llm_score:.1f}/10")
-
-    # Flush to ensure all scores are sent
-    langfuse.flush()
-
-    # Compute summary statistics
-    successful = [r for r in results if r["status"] == "success"]
-    avg_field_accuracy = sum(r["field_accuracy"] for r in successful) / len(successful) if successful else 0
-    avg_llm_score = sum(r["llm_score"] for r in successful) / len(successful) if successful else 0
-
-    summary = {
-        "dataset_name": dataset_name,
-        "run_name": run_name,
-        "total_items": len(results),
-        "successful": len(successful),
-        "failed": len(results) - len(successful),
-        "avg_field_accuracy": avg_field_accuracy,
-        "avg_llm_score": avg_llm_score,
-        "detailed_results": results
-    }
-
-    print(f"\n{'='*60}")
-    print(f"EXPERIMENT SUMMARY: {run_name}")
-    print(f"{'='*60}")
-    print(f"Total items: {summary['total_items']}")
-    print(f"Successful: {summary['successful']}")
-    print(f"Failed: {summary['failed']}")
-    print(f"Avg field accuracy: {avg_field_accuracy:.2%}")
-    print(f"Avg LLM score: {avg_llm_score:.1f}/10")
-    print(f"\nResults available in Langfuse dashboard under:")
-    print(f"  Dataset: {dataset_name}")
-    print(f"  Run: {run_name}")
-
-    return summary
 
 
 # =============================================================================

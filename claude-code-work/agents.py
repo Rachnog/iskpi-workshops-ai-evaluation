@@ -247,7 +247,7 @@ def create_evaluator_agent(retriever, provider: LLMProvider = LLMProvider.GEMINI
     @tool
     def search_knowledge_base(query: str) -> str:
         """Search portfolio optimization knowledge base."""
-        docs = retriever.get_relevant_documents(query)
+        docs = retriever.invoke(query)
         return "\n\n---\n\n".join([doc.page_content for doc in docs])
 
     llm = get_llm(provider, temperature=0)
@@ -262,14 +262,90 @@ def create_evaluator_agent(retriever, provider: LLMProvider = LLMProvider.GEMINI
     return AgentExecutor(agent=agent, tools=tools, verbose=True, return_intermediate_steps=True)
 
 
+# =============================================================================
+# A2A PROTOCOL IMPLEMENTATION
+# Green Agent (Evaluator) <-> Purple Agent (Portfolio)
+# =============================================================================
+
+@dataclass
+class A2AMessage:
+    """Message in A2A protocol communication."""
+    sender: str  # "green" (evaluator) or "purple" (portfolio)
+    content: str
+    message_type: str  # "request", "response", "query", "assessment"
+
+
 @dataclass
 class A2AEvaluation:
-    """A2A evaluation result."""
+    """A2A evaluation result with full conversation history."""
     task_description: str
-    task_agent_response: str
-    evaluation_reasoning: str
+    conversation: list  # List of A2AMessage
     scores: Dict[str, float]
     overall_score: float
+    feedback: str
+
+
+def create_a2a_purple_agent(provider: LLMProvider = LLMProvider.GEMINI) -> AgentExecutor:
+    """
+    Create Purple Agent (the agent being evaluated).
+
+    Purple agents are competitors that attempt to excel at tasks defined by green agents.
+    This is the portfolio optimization agent.
+    """
+    return create_portfolio_agent(provider)
+
+
+def create_a2a_green_agent(retriever, provider: LLMProvider = LLMProvider.GEMINI) -> AgentExecutor:
+    """
+    Create Green Agent (the evaluator).
+
+    Green agents define tasks, environments, and scoring.
+    This agent has RAG for knowledge and web search for current info.
+    """
+    from langchain_community.tools import DuckDuckGoSearchRun
+
+    @tool
+    def search_knowledge_base(query: str) -> str:
+        """Search portfolio optimization knowledge base for best practices and examples."""
+        docs = retriever.invoke(query)
+        return "\n\n---\n\n".join([doc.page_content for doc in docs])
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the web for current market information or financial concepts."""
+        try:
+            search = DuckDuckGoSearchRun()
+            return search.run(query)
+        except Exception as e:
+            return f"Web search unavailable: {str(e)}"
+
+    GREEN_AGENT_PROMPT = """You are a Green Agent (Evaluator) in an A2A (Agent-to-Agent) evaluation protocol.
+
+Your role:
+1. QUERY the Purple Agent (portfolio optimizer) to understand its recommendation
+2. ASK follow-up questions if the response is unclear or incomplete
+3. SEARCH your knowledge base for best practices and reference examples
+4. ASSESS the quality of the recommendation
+
+When evaluating, score these dimensions (1-10):
+- Universe Selection: Is the asset universe appropriate?
+- Optimization Method: Is the optimization approach suitable?
+- Risk Assessment: Is risk properly evaluated?
+- Constraint Handling: Are investor constraints respected?
+- Explanation Quality: Is the reasoning clear?
+
+After gathering information, provide your final assessment with scores and feedback."""
+
+    llm = get_llm(provider, temperature=0)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", GREEN_AGENT_PROMPT),
+        MessagesPlaceholder(variable_name="chat_history", optional=True),
+        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad")
+    ])
+    tools = [search_knowledge_base, web_search]
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    return AgentExecutor(agent=agent, tools=tools, verbose=True, return_intermediate_steps=True)
 
 
 @observe()
@@ -277,72 +353,227 @@ def run_a2a_evaluation(
     task_description: str,
     portfolio_agent: AgentExecutor,
     evaluator_agent: AgentExecutor,
-    session_id: str = None
+    session_id: str = None,
+    max_rounds: int = 3
 ) -> A2AEvaluation:
-    """Run Agent-to-Agent evaluation with automatic Langfuse tracing."""
+    """
+    Run Agent-to-Agent evaluation following the A2A protocol.
+
+    Protocol flow (iterative):
+    1. Green Agent sends initial request to Purple Agent
+    2. Purple Agent responds
+    3. Green Agent asks follow-up questions (repeats for max_rounds)
+    4. Purple Agent responds to each follow-up
+    5. Green Agent produces final assessment with scores
+
+    All communication is logged as A2AMessage objects.
+    """
     langfuse = get_client()
     if langfuse:
         langfuse.update_current_trace(
             name="a2a_evaluation",
             session_id=session_id,
-            input={"task_description": task_description}
+            input={"task_description": task_description, "max_rounds": max_rounds}
         )
 
-    # CallbackHandler auto-inherits current trace context
     handler = LangfuseCallbackHandler() if LANGFUSE_ENABLED else None
     config = {"callbacks": [handler]} if handler else {}
 
-    # Run portfolio agent
-    task_result = portfolio_agent.invoke({"input": task_description}, config=config)
-    task_response = task_result["output"]
+    conversation = []
+    purple_chat_history = []  # Maintain chat history for Purple agent
 
-    eval_query = f"""Evaluate this portfolio recommendation.
+    # === ROUND 1: Initial Request ===
+    print("\n" + "="*60)
+    print("A2A PROTOCOL - ROUND 1: Initial Request")
+    print("="*60)
+
+    # Green Agent sends initial request
+    initial_request = A2AMessage(
+        sender="green",
+        content=f"Please provide a portfolio recommendation for this investor: {task_description}",
+        message_type="request"
+    )
+    conversation.append(initial_request)
+    print(f"\n[GREEN → PURPLE] {initial_request.content[:200]}...")
+
+    # Purple Agent responds
+    purple_result = portfolio_agent.invoke(
+        {"input": task_description, "chat_history": purple_chat_history},
+        config=config
+    )
+    purple_response = purple_result["output"]
+    purple_chat_history.append({"role": "user", "content": task_description})
+    purple_chat_history.append({"role": "assistant", "content": purple_response})
+
+    conversation.append(A2AMessage(
+        sender="purple",
+        content=purple_response,
+        message_type="response"
+    ))
+    print(f"\n[PURPLE → GREEN] Response received ({len(purple_response)} chars)")
+
+    # === ITERATIVE ROUNDS: Green asks follow-ups, Purple responds ===
+    for round_num in range(2, max_rounds + 1):
+        print("\n" + "="*60)
+        print(f"A2A PROTOCOL - ROUND {round_num}: Follow-up Query")
+        print("="*60)
+
+        # Build conversation context for Green agent
+        conversation_summary = _format_conversation_for_green(conversation)
+
+        # Green agent formulates a follow-up question
+        green_prompt = f"""You are evaluating a portfolio agent. Here is the conversation so far:
 
 INVESTOR REQUEST: {task_description}
 
-PORTFOLIO AGENT RESPONSE: {task_response}
+CONVERSATION HISTORY:
+{conversation_summary}
 
-Provide scores (1-10) for Universe Selection, Optimization Method, Risk Assessment, Constraint Handling, Explanation Quality, and an overall score with feedback."""
+Based on this conversation, you should:
+1. If the portfolio agent's response is incomplete or unclear, ask a specific follow-up question
+2. Use your tools (search_knowledge_base, web_search) to gather relevant information
+3. Ask the portfolio agent to clarify, expand, or justify their recommendation
 
-    # Run evaluator agent
-    eval_result = evaluator_agent.invoke({"input": eval_query}, config=config)
+Generate a FOLLOW-UP QUESTION to ask the portfolio agent. Be specific and probe deeper into:
+- Why they chose that particular universe or optimization method
+- How they assessed risk for this investor
+- What constraints they considered
+- Any alternative approaches they considered
 
-    # Parse scores
-    scores = {"universe_selection": 7.0, "optimization_method": 8.0, "risk_assessment": 7.5,
-              "constraint_handling": 8.0, "explanation_quality": 7.0}
-    overall_score = sum(scores.values()) / len(scores)
+Your question should help you better evaluate the recommendation quality."""
 
-    try:
-        import re
-        response_text = eval_result["output"]
-        score_patterns = [
-            (r"universe\s*selection[:\s]*(\d+)", "universe_selection"),
-            (r"optimization\s*method[:\s]*(\d+)", "optimization_method"),
-            (r"risk\s*assessment[:\s]*(\d+)", "risk_assessment"),
-            (r"constraint\s*handling[:\s]*(\d+)", "constraint_handling"),
-            (r"explanation\s*quality[:\s]*(\d+)", "explanation_quality"),
-            (r"overall[:\s]*(\d+)", "overall")
-        ]
-        for pattern, key in score_patterns:
-            match = re.search(pattern, response_text.lower())
-            if match:
-                if key == "overall":
-                    overall_score = float(match.group(1))
-                else:
-                    scores[key] = float(match.group(1))
-    except Exception:
-        pass
+        green_result = evaluator_agent.invoke({"input": green_prompt}, config=config)
+        green_question = green_result["output"]
+
+        conversation.append(A2AMessage(
+            sender="green",
+            content=green_question,
+            message_type="query"
+        ))
+        print(f"\n[GREEN → PURPLE] {green_question[:300]}...")
+
+        # Purple agent responds to the follow-up
+        purple_result = portfolio_agent.invoke(
+            {"input": green_question, "chat_history": purple_chat_history},
+            config=config
+        )
+        purple_response = purple_result["output"]
+        purple_chat_history.append({"role": "user", "content": green_question})
+        purple_chat_history.append({"role": "assistant", "content": purple_response})
+
+        conversation.append(A2AMessage(
+            sender="purple",
+            content=purple_response,
+            message_type="response"
+        ))
+        print(f"\n[PURPLE → GREEN] Response received ({len(purple_response)} chars)")
+
+    # === FINAL ASSESSMENT ===
+    print("\n" + "="*60)
+    print("A2A PROTOCOL - FINAL ASSESSMENT")
+    print("="*60)
+
+    conversation_summary = _format_conversation_for_green(conversation)
+
+    assessment_prompt = f"""You have completed your evaluation of the portfolio agent. Here is the full conversation:
+
+INVESTOR REQUEST: {task_description}
+
+FULL CONVERSATION:
+{conversation_summary}
+
+Now provide your FINAL ASSESSMENT. You must provide:
+1. Scores (1-10) for each dimension
+2. Overall score (1-10)
+3. Specific feedback based on the entire conversation
+
+Format your scores EXACTLY like this:
+- Universe Selection: X/10
+- Optimization Method: X/10
+- Risk Assessment: X/10
+- Constraint Handling: X/10
+- Explanation Quality: X/10
+- Overall Score: X/10
+
+Then provide your detailed feedback explaining your scores."""
+
+    final_result = evaluator_agent.invoke({"input": assessment_prompt}, config=config)
+
+    assessment = A2AMessage(
+        sender="green",
+        content=final_result["output"],
+        message_type="assessment"
+    )
+    conversation.append(assessment)
+
+    # Parse scores from assessment
+    scores = _parse_a2a_scores(assessment.content)
+    overall_score = scores.get("overall", sum(scores.values()) / max(len(scores), 1))
+
+    print(f"\n[GREEN ASSESSMENT] Overall Score: {overall_score:.1f}/10")
 
     if langfuse:
-        langfuse.update_current_trace(output={"overall_score": overall_score, "scores": scores})
+        langfuse.update_current_trace(output={
+            "overall_score": overall_score,
+            "scores": scores,
+            "num_rounds": max_rounds
+        })
 
     return A2AEvaluation(
         task_description=task_description,
-        task_agent_response=task_response,
-        evaluation_reasoning=eval_result["output"],
+        conversation=conversation,
         scores=scores,
-        overall_score=overall_score
+        overall_score=overall_score,
+        feedback=assessment.content
     )
+
+
+def _format_conversation_for_green(conversation: list) -> str:
+    """Format conversation history for the Green agent."""
+    lines = []
+    for msg in conversation:
+        sender = "GREEN (Evaluator)" if msg.sender == "green" else "PURPLE (Portfolio)"
+        lines.append(f"[{sender}] ({msg.message_type}):\n{msg.content}\n")
+    return "\n---\n".join(lines)
+
+
+def _parse_a2a_scores(text: str) -> Dict[str, float]:
+    """Parse scores from evaluator's assessment text."""
+    import re
+
+    scores = {}
+    patterns = [
+        (r"universe\s*selection[:\s]*(\d+(?:\.\d+)?)", "universe_selection"),
+        (r"optimization\s*method[:\s]*(\d+(?:\.\d+)?)", "optimization_method"),
+        (r"risk\s*assessment[:\s]*(\d+(?:\.\d+)?)", "risk_assessment"),
+        (r"constraint\s*handling[:\s]*(\d+(?:\.\d+)?)", "constraint_handling"),
+        (r"explanation\s*quality[:\s]*(\d+(?:\.\d+)?)", "explanation_quality"),
+        (r"overall\s*(?:score)?[:\s]*(\d+(?:\.\d+)?)", "overall")
+    ]
+
+    for pattern, key in patterns:
+        match = re.search(pattern, text.lower())
+        if match:
+            scores[key] = float(match.group(1))
+
+    # Default scores if parsing fails
+    if not scores:
+        scores = {
+            "universe_selection": 7.0,
+            "optimization_method": 7.0,
+            "risk_assessment": 7.0,
+            "constraint_handling": 7.0,
+            "explanation_quality": 7.0,
+            "overall": 7.0
+        }
+
+    return scores
+
+
+# Legacy function for backward compatibility
+def create_evaluator_agent(retriever, provider: LLMProvider = LLMProvider.GEMINI) -> AgentExecutor:
+    """Create an evaluator agent with RAG (legacy - use create_a2a_green_agent for A2A)."""
+    return create_a2a_green_agent(retriever, provider)
 
 
 def flush_langfuse():
