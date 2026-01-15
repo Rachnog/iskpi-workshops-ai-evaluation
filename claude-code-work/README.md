@@ -1,155 +1,238 @@
 # AI Evaluation in Finance Workshop
 
-This workshop explores AI evaluation techniques in finance through portfolio optimization. Learn to evaluate mathematical models, LLM translations, and AI agents using three progressive notebooks with consistent investor personas.
+Hands-on workshop exploring AI evaluation techniques through portfolio optimization. Three progressive notebooks cover mathematical models, LLM translation, and Agent-to-Agent (A2A) evaluation with Langfuse observability.
 
 ## Quick Start
 
 ```bash
-# Install with uv
-uv venv && source .venv/bin/activate
-uv pip install -e .
-
-# Or with pip
+# Install dependencies
 pip install -e .
 
-# Configure API keys in .env file, then run:
+# Configure API keys in .env file
+cp .env.example .env  # Edit with your keys
+
+# Run notebooks
 jupyter notebook
 ```
 
-## Three Consistent Personas
+## Investor Personas
 
-All notebooks use the same investor personas for consistent evaluation:
+All notebooks use consistent investor personas for evaluation:
 
-| Persona | Age | Investment | Horizon | Risk | Strategy |
-|---------|-----|------------|---------|------|----------|
-| **Sarah Chen** | 58 | $500,000 | 7 years | Low | min_volatility, conservative |
-| **Marcus Johnson** | 28 | $50,000 | 30 years | High | max_sharpe, us_tech |
-| **Elena Rodriguez** | 38 | $150,000 | 18 years | Medium | max_sharpe, global, 15% max |
+| Persona | Profile | Strategy |
+|---------|---------|----------|
+| **Sarah Chen** | 58yo, $500K, 7yr horizon, low risk | min_volatility, conservative universe |
+| **Marcus Johnson** | 28yo, $50K, 30yr horizon, high risk | max_sharpe, us_tech universe |
+| **Elena Rodriguez** | 38yo, $150K, 18yr horizon, medium risk | max_sharpe, global_diversified, 15% max position |
 
 ## Project Structure
 
 ```
-├── pyproject.toml           # uv package configuration
-├── scenarios.json           # Investor personas and scenarios
-├── evaluation_dataset.json  # LLM evaluation dataset (20 examples)
-├── portfolio_optimizer.py   # Core portfolio optimization
-├── llm_utils.py            # LLM translation utilities
-├── agents.py               # Agent definitions
-├── 1_quant_portfolio_optimization.ipynb
-├── 2_llm_translation_evaluation.ipynb
-└── 3_ai_agents_a2a_evaluation.ipynb
+├── 1_quant_portfolio_optimization.ipynb  # MVO, HRP, backtesting
+├── 2_llm_translation_evaluation.ipynb    # LLM translation + Langfuse experiments
+├── 3_ai_agents_a2a_evaluation.ipynb      # A2A protocol with Green/Purple agents
+├── portfolio_optimizer.py                # Portfolio optimization functions
+├── llm_utils.py                          # Translation and evaluation utilities
+├── agents.py                             # Agent definitions and A2A protocol
+├── scenarios.json                        # Investor personas and test scenarios
+├── evaluation_dataset.json               # Evaluation data + RAG knowledge base
+└── pyproject.toml                        # Package configuration
 ```
 
 ## Environment Setup
 
 Create `.env` file:
+
 ```env
-ANTHROPIC_API_KEY=your-key
+# Required
 GEMINI_API_KEY=your-key
+
+# Langfuse (for tracing and experiments)
 LANGFUSE_SECRET_KEY=your-key
 LANGFUSE_PUBLIC_KEY=your-key
-LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 ---
 
 ## Notebook 1: Quantitative Portfolio Optimization
 
-**Topics:** Mean-Variance Optimization, HRP, Backtesting, Financial Metrics
+Evaluate mathematical portfolio optimization methods using backtesting and financial metrics.
+
+**Topics:** Mean-Variance Optimization, Hierarchical Risk Parity, Efficient Frontier, Backtesting
 
 **Key Functions:**
-- `optimize_portfolio()` - MVO with min_volatility, max_sharpe, efficient_return
-- `optimize_hrp()` - Hierarchical Risk Parity
-- `backtest_portfolio()` - Historical performance
-
-### Exercise 1.1: Constraint Analysis
-Compare Elena's portfolio with different max_position values (10%, 15%, 20%):
 ```python
-for max_pos in [0.10, 0.15, 0.20]:
-    config = PortfolioConfig(..., max_position=max_pos)
-    result = optimize_portfolio(config, prices)
-    print(f"Max {max_pos:.0%}: Sharpe={result['sharpe_ratio']:.3f}")
+from portfolio_optimizer import optimize_portfolio, optimize_hrp, backtest_portfolio
+
+# Mean-Variance Optimization
+result = optimize_portfolio(config, prices)  # min_volatility, max_sharpe, efficient_return
+
+# Hierarchical Risk Parity
+result = optimize_hrp(prices)
+
+# Backtest
+metrics = backtest_portfolio(weights, prices)  # sharpe, drawdown, returns
 ```
 
-### Exercise 1.2: Covariance Methods
-Compare 'sample', 'ledoit_wolf', and 'exp_cov' methods. Which is most stable?
+**Evaluation Metrics:**
+| Metric | Good Value | Description |
+|--------|------------|-------------|
+| Sharpe Ratio | > 1.0 | Risk-adjusted return |
+| Max Drawdown | > -20% | Worst peak-to-trough |
+| Volatility | < 15% | Annualized std dev |
 
 ---
 
 ## Notebook 2: LLM Translation Evaluation
 
-**Topics:** LLM Translation, Multi-provider Comparison, LLM-as-Judge, Langfuse
+Evaluate LLM ability to translate investor narratives into structured portfolio configurations.
+
+**Topics:** LLM Translation, Field Accuracy, LLM-as-Judge, Langfuse Datasets & Experiments
 
 **Key Functions:**
-- `translate_narrative()` - Narrative → portfolio config
-- `compute_field_accuracy()` - Measure accuracy
-- `llm_as_judge()` - LLM evaluation
-
-### Exercise 2.1: Provider Comparison
-Run translations with Anthropic, OpenAI, and Gemini. Compare accuracy:
 ```python
-for provider in [LLMProvider.ANTHROPIC, LLMProvider.GEMINI]:
-    result = translate_narrative(narrative, provider)
-    accuracy = compute_field_accuracy(result, expected)
-    print(f"{provider.value}: {accuracy['overall_accuracy']:.1%}")
+from llm_utils import translate_narrative, llm_as_judge, LLMProvider
+
+# Translate narrative to config
+result = translate_narrative(narrative, provider=LLMProvider.GEMINI)
+
+# LLM-as-Judge evaluation
+scores = llm_as_judge(narrative, output, expected, provider=LLMProvider.GEMINI)
 ```
 
-### Exercise 2.2: Custom Judge
-Create an LLM judge that evaluates financial appropriateness and risk alignment.
+**Langfuse Experiments:**
+```python
+from langfuse import Langfuse
+from langfuse.evaluation import Evaluation
+
+# Create dataset in Langfuse
+langfuse = Langfuse()
+dataset = langfuse.create_dataset(name="portfolio-translation-v1")
+
+# Define task and evaluators
+def translation_task(*, item, **kwargs):
+    return translate_narrative(item.input["narrative"])["config"]
+
+def field_accuracy_eval(*, output, expected_output, **kwargs):
+    accuracy = compute_accuracy(output, expected_output)
+    return Evaluation(name="field_accuracy", value=accuracy)
+
+# Run experiment
+result = dataset.run_experiment(
+    name="gemini-baseline",
+    task=translation_task,
+    evaluators=[field_accuracy_eval, llm_judge_eval]
+)
+```
 
 ---
 
 ## Notebook 3: AI Agents & A2A Evaluation
 
-**Topics:** LangChain Agents, RAG, Agent-to-Agent Protocol, Skills Architecture
+Evaluate AI agents using the Agent-to-Agent (A2A) protocol with iterative communication.
+
+**Topics:** LangChain Agents, RAG, Green/Purple Agent Protocol, Iterative Evaluation
+
+**A2A Protocol Overview:**
+
+The A2A protocol uses two agent roles:
+- **Purple Agent** (Portfolio): The agent being evaluated
+- **Green Agent** (Evaluator): Queries Purple agent and produces scores
+
+```
+A2A Protocol Flow (max_rounds=3)
+────────────────────────────────
+Round 1: GREEN → PURPLE (initial request)
+         PURPLE → GREEN (portfolio recommendation)
+
+Round 2: GREEN → PURPLE (follow-up question)
+         PURPLE → GREEN (clarification)
+
+Round 3: GREEN → PURPLE (probe deeper)
+         PURPLE → GREEN (justification)
+
+Final:   GREEN produces assessment (scores + feedback)
+```
 
 **Key Functions:**
-- `create_portfolio_agent()` - Agent with portfolio tools
-- `create_evaluator_agent()` - RAG-enhanced evaluator
-- `run_a2a_evaluation()` - A2A protocol
-- `run_skills_agent()` - Gemini function-calling agent
+```python
+from agents import (
+    create_a2a_purple_agent,
+    create_a2a_green_agent,
+    run_a2a_evaluation,
+    create_rag_knowledge_base,
+    LLMProvider
+)
 
-### Exercise 3.1: RAG Enhancement
-Add examples to `evaluation_dataset.json` and measure evaluation improvement.
+# Create agents
+purple_agent = create_a2a_purple_agent(provider=LLMProvider.GEMINI)
+retriever = create_rag_knowledge_base(eval_data)
+green_agent = create_a2a_green_agent(retriever, provider=LLMProvider.GEMINI)
 
-### Exercise 3.2: Architecture Comparison
-Run the same scenario with standard agent vs skills agent. Compare:
-- Task completion rate
-- Number of tool calls
-- Response quality
+# Run A2A evaluation with iterative communication
+result = run_a2a_evaluation(
+    task_description="Build a conservative portfolio for retirement",
+    portfolio_agent=purple_agent,
+    evaluator_agent=green_agent,
+    max_rounds=5,  # 5 rounds of communication
+    session_id="evaluation_001"
+)
+
+# Results
+print(f"Overall Score: {result.overall_score}/10")
+print(f"Messages exchanged: {len(result.conversation)}")
+for dim, score in result.scores.items():
+    print(f"  {dim}: {score}/10")
+```
+
+**Green Agent Tools:**
+- `search_knowledge_base` - RAG retrieval from evaluation dataset
+- `web_search` - DuckDuckGo search for current market information
+
+**Scoring Dimensions:**
+| Dimension | Description |
+|-----------|-------------|
+| Universe Selection | Appropriate asset universe for investor |
+| Optimization Method | Suitable optimization approach |
+| Risk Assessment | Proper risk evaluation |
+| Constraint Handling | Respect for investor constraints |
+| Explanation Quality | Clear reasoning and trade-offs |
 
 ---
 
-## Evaluation Metrics
+## Evaluation Summary
 
-| Category | Metric | Good Value |
-|----------|--------|------------|
-| Financial | Sharpe Ratio | > 1.0 |
-| Financial | Max Drawdown | > -20% |
-| Translation | Field Accuracy | > 90% |
-| Translation | LLM Judge Score | > 8/10 |
-| Agent | A2A Score | > 7/10 |
+| Notebook | Evaluation Type | Key Metrics |
+|----------|-----------------|-------------|
+| 1. Quant | Backtesting | Sharpe > 1.0, Drawdown > -20% |
+| 2. LLM | Field Accuracy + LLM Judge | Accuracy > 90%, Judge > 8/10 |
+| 3. Agents | A2A Protocol | Overall Score > 7/10 |
 
-## Key Concepts
+## Langfuse Tracing
 
-### Optimization Targets
-- `min_volatility` - Minimize risk (Sarah)
-- `max_sharpe` - Risk-adjusted returns (Elena, Marcus)
-- `efficient_return` - Target return with min risk
+All LLM calls and agent interactions are traced in Langfuse using the `@observe()` decorator:
 
-### Asset Universes
-- `conservative` - Bonds, low-risk (Sarah)
-- `us_tech` - Technology stocks (Marcus)
-- `global_diversified` - Global ETFs (Elena)
+```python
+from langfuse import observe
+
+@observe()
+def my_function():
+    # All LLM calls inside are automatically traced
+    result = llm.invoke(prompt)
+    return result
+```
 
 ## Troubleshooting
 
-- **API errors**: Check `.env` keys; Gemini is fallback
-- **Memory issues**: Use `ledoit_wolf` covariance
-- **Agent timeout**: Increase timeout, use verbose=True
+- **API errors**: Verify `.env` keys are set correctly
+- **Gemini rate limits**: Add delays between calls or use batch processing
+- **Agent timeout**: Increase timeout or reduce max_rounds
+- **Memory issues**: Use `ledoit_wolf` covariance estimation
 
 ## References
 
-- [PyPortfolioOpt](https://pyportfolioopt.readthedocs.io/)
+- [PyPortfolioOpt Documentation](https://pyportfolioopt.readthedocs.io/)
 - [LangChain Agents](https://python.langchain.com/docs/modules/agents/)
-- [Langfuse](https://langfuse.com/docs)
+- [Langfuse Experiments](https://langfuse.com/docs/evaluation/experiments)
+- [A2A Protocol](https://google.github.io/A2A/)

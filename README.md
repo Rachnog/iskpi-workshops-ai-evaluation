@@ -1,31 +1,18 @@
 # AI Evaluation Workshop
 
-Workshop materials for AI evaluation in finance: portfolio optimization, LLM translation, and AI agents with Langfuse tracing.
+Workshop materials for AI evaluation in finance: portfolio optimization, LLM translation evaluation, and Agent-to-Agent (A2A) evaluation with Langfuse observability.
 
-## Overview
+## Workshop Overview
 
-This workshop demonstrates three key areas of AI evaluation:
+This workshop demonstrates three progressive approaches to AI evaluation in a financial context:
 
-1. **Portfolio Optimization** - Quantitative methods (MVO, HRP) with backtesting
-2. **LLM Translation** - Converting investor narratives to portfolio configurations
-3. **AI Agents** - Agent-to-Agent (A2A) evaluation with automatic tracing
+| Notebook | Topic | Evaluation Method |
+|----------|-------|-------------------|
+| **1. Quant Portfolio** | Mathematical optimization | Backtesting, Sharpe ratio, drawdown |
+| **2. LLM Translation** | Narrative → config translation | Field accuracy, LLM-as-Judge, Langfuse experiments |
+| **3. AI Agents (A2A)** | Agent-to-Agent evaluation | Green/Purple protocol, iterative scoring |
 
-## Notebooks
-
-| Notebook | Description |
-|----------|-------------|
-| `1_quant_portfolio_optimization.ipynb` | Mean-Variance Optimization, HRP, efficient frontier |
-| `2_llm_translation_evaluation.ipynb` | LLM translation from narrative to portfolio config with evaluation |
-| `3_ai_agents_a2a_evaluation.ipynb` | Portfolio and evaluator agents with A2A protocol |
-
-## Setup
-
-### Prerequisites
-
-- Python 3.10+
-- API keys for Gemini (required), Anthropic, OpenAI (optional)
-
-### Installation
+## Quick Start
 
 ```bash
 cd claude-code-work
@@ -33,110 +20,109 @@ cd claude-code-work
 # Create virtual environment
 python -m venv .venv
 source .venv/bin/activate  # Linux/macOS
-# or .venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -e .
+
+# Configure API keys
+cp .env.example .env  # Edit with your keys
+
+# Run notebooks
+jupyter notebook
 ```
 
-### Environment Variables
+## Environment Variables
 
-Create a `.env` file in the root directory:
+Create a `.env` file:
 
 ```env
 # Required
 GEMINI_API_KEY=your-gemini-api-key
 
-# Optional (for multi-provider support)
-ANTHROPIC_API_KEY=your-anthropic-api-key
-OPENAI_API_KEY=your-openai-api-key
-
-# Langfuse (for tracing)
+# Langfuse (for tracing and experiments)
 LANGFUSE_PUBLIC_KEY=your-langfuse-public-key
 LANGFUSE_SECRET_KEY=your-langfuse-secret-key
 LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+## Workshop Content
+
+### Notebook 1: Quantitative Portfolio Optimization
+
+Evaluate mathematical portfolio optimization methods:
+
+- **Mean-Variance Optimization (MVO)**: min_volatility, max_sharpe, efficient_return
+- **Hierarchical Risk Parity (HRP)**: Clustering-based allocation
+- **Backtesting**: Historical performance validation
+- **Metrics**: Sharpe ratio, max drawdown, volatility
+
+### Notebook 2: LLM Translation Evaluation
+
+Evaluate LLM ability to translate investor narratives to portfolio configurations:
+
+- **Translation**: Natural language → structured JSON config
+- **Field Accuracy**: Programmatic validation of extracted fields
+- **LLM-as-Judge**: Using LLMs to evaluate translation quality
+- **Langfuse Experiments**: Batch evaluation with native dataset/experiment features
+
+```python
+# Run experiment on Langfuse dataset
+result = dataset.run_experiment(
+    name="gemini-baseline",
+    task=translation_task,
+    evaluators=[field_accuracy_eval, llm_judge_eval]
+)
+```
+
+### Notebook 3: Agent-to-Agent (A2A) Evaluation
+
+Evaluate AI agents using the Green/Purple agent protocol:
+
+- **Purple Agent**: Portfolio optimizer (agent being evaluated)
+- **Green Agent**: Evaluator with RAG + web search tools
+- **Iterative Communication**: Multi-round queries and responses
+- **Scoring**: Dimension-based assessment (1-10 scale)
+
+```python
+# Run A2A evaluation with 5 rounds of communication
+result = run_a2a_evaluation(
+    task_description="Build a conservative portfolio",
+    portfolio_agent=purple_agent,
+    evaluator_agent=green_agent,
+    max_rounds=5  # Green asks 5 follow-up questions
+)
+print(f"Score: {result.overall_score}/10")
+print(f"Messages: {len(result.conversation)}")  # 11 messages
 ```
 
 ## Project Structure
 
 ```
 claude-code-work/
-├── 1_quant_portfolio_optimization.ipynb  # Portfolio optimization methods
-├── 2_llm_translation_evaluation.ipynb    # LLM translation with evaluation
+├── 1_quant_portfolio_optimization.ipynb  # Portfolio optimization
+├── 2_llm_translation_evaluation.ipynb    # LLM translation + Langfuse
 ├── 3_ai_agents_a2a_evaluation.ipynb      # A2A evaluation protocol
-├── portfolio_optimizer.py                # Portfolio optimization utilities
-├── llm_utils.py                          # Translation utilities
-├── agents.py                             # AI agents with Langfuse tracing
-├── scenarios.json                        # Test scenarios and personas
-├── evaluation_dataset.json               # Evaluation dataset
-└── pyproject.toml                        # Project dependencies
+├── portfolio_optimizer.py                # MVO, HRP, backtesting
+├── llm_utils.py                          # Translation, evaluation, experiments
+├── agents.py                             # Green/Purple agents, A2A protocol
+├── scenarios.json                        # Investor personas
+├── evaluation_dataset.json               # Evaluation dataset + RAG knowledge
+└── pyproject.toml                        # Dependencies
 ```
 
-## Key Features
+## Key Dependencies
 
-### Automatic Langfuse Tracing
-
-All agents use the `@observe()` decorator pattern for automatic hierarchical tracing:
-
-```python
-from langfuse import observe, get_client
-from langfuse.langchain import CallbackHandler
-
-@observe()
-def run_my_agent(agent, query, session_id=None):
-    langfuse = get_client()
-    if langfuse:
-        langfuse.update_current_trace(name="my_agent", session_id=session_id)
-
-    handler = CallbackHandler()  # Auto-inherits trace context
-    result = agent.invoke({"input": query}, config={"callbacks": [handler]})
-    return result
-```
-
-### Multi-Provider Support
-
-Agents support multiple LLM providers:
-
-```python
-from agents import create_portfolio_agent, LLMProvider
-
-# Use Gemini (default)
-agent = create_portfolio_agent(provider=LLMProvider.GEMINI)
-
-# Use Anthropic
-agent = create_portfolio_agent(provider=LLMProvider.ANTHROPIC)
-
-# Use OpenAI
-agent = create_portfolio_agent(provider=LLMProvider.OPENAI)
-```
-
-### Agent-to-Agent (A2A) Evaluation
-
-The A2A protocol evaluates agent outputs using another agent:
-
-```python
-from agents import run_a2a_evaluation
-
-result = run_a2a_evaluation(
-    task_description="Build a conservative portfolio",
-    portfolio_agent=portfolio_agent,
-    evaluator_agent=evaluator_agent,
-    session_id="evaluation_session"
-)
-print(f"Overall Score: {result.overall_score}/10")
-```
-
-## Dependencies
-
-Key dependencies (see `pyproject.toml` for full list):
-
-- `langchain` - Agent framework
-- `langchain-google-genai` - Gemini integration
-- `langchain-anthropic` - Claude integration
-- `langchain-openai` - OpenAI integration
-- `langfuse` - LLM observability
+- `langchain` + `langchain-google-genai` - Agent framework with Gemini
+- `langfuse` - LLM observability, experiments, datasets
 - `pypfopt` - Portfolio optimization
 - `yfinance` - Market data
+
+## PDF Exports
+
+Pre-executed notebooks are available as PDFs in `claude-code-work/`:
+- `1_quant_portfolio_optimization.pdf`
+- `2_llm_translation_evaluation.pdf`
+- `3_ai_agents_a2a_evaluation.pdf`
 
 ## License
 
