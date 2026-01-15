@@ -1,0 +1,71 @@
+{
+  "personas": {
+    "sarah_conservative": {
+      "name": "Sarah Chen",
+      "narrative": "I'm Sarah, 58 years old, and planning to retire in 7 years. I have $500,000 saved and want stable income with capital preservation. I can't afford to lose more than 15% of my portfolio. I prefer US-based bond investments and don't want emerging market exposure.",
+      "expert_translation": {
+        "optimization_target": "min_volatility",
+        "universe": "conservative",
+        "time_horizon_years": 7,
+        "max_drawdown_tolerance": 0.15,
+        "risk_tolerance": "low",
+        "investment_amount": 500000,
+        "geographic_preference": "US only",
+        "allow_short": false
+      }
+    },
+    "marcus_growth": {
+      "name": "Marcus Johnson",
+      "narrative": "I'm Marcus, 28 years old, just started my career as a software engineer. I have $50,000 to invest and want to maximize long-term growth. I can tolerate high volatility since I won't need this money for 30+ years. I believe in technology and want concentrated exposure to tech stocks.",
+      "expert_translation": {
+        "optimization_target": "max_sharpe",
+        "universe": "us_tech",
+        "time_horizon_years": 30,
+        "max_drawdown_tolerance": 0.40,
+        "risk_tolerance": "high",
+        "investment_amount": 50000,
+        "geographic_preference": "US tech focus",
+        "allow_short": false
+      }
+    },
+    "elena_balanced": {
+      "name": "Elena Rodriguez",
+      "narrative": "I'm Elena, 38 years old, and I want to build a portfolio for my children's education fund. My kids are 2 and 5 years old, so I have about 18 years. I have $150,000 to invest with moderate risk tolerance. I'd like global diversification and reasonable risk-adjusted returns. No single position should exceed 15% of the portfolio.",
+      "expert_translation": {
+        "optimization_target": "max_sharpe",
+        "universe": "global_diversified",
+        "time_horizon_years": 18,
+        "max_position": 0.15,
+        "risk_tolerance": "medium",
+        "investment_amount": 150000,
+        "geographic_preference": "Global",
+        "allow_short": false
+      }
+    }
+  },
+  "complex_scenarios": [
+    {
+      "name": "Multi-objective comparison for Elena",
+      "persona": "elena_balanced",
+      "description": "Elena Rodriguez wants to compare three different approaches for her children's education fund ($150,000, 18-year horizon, moderate risk): 1. Minimum volatility using conservative assets (safe approach) 2. Maximum Sharpe ratio using global diversified assets (her preference) 3. Hierarchical Risk Parity using global diversified assets (alternative). Help Elena understand the trade-offs and recommend the best approach given her moderate risk tolerance and 15% max position constraint.",
+      "expected_tools": ["optimize_portfolio_tool", "run_hrp_optimization", "compare_portfolios"]
+    },
+    {
+      "name": "Position limit analysis for Marcus",
+      "persona": "marcus_growth",
+      "description": "Marcus Johnson has $50,000 to invest in tech stocks for 30 years. He has high risk tolerance but wants to understand concentration risk. Show Marcus how different position limits (10%, 15%, 20%, no limit) affect his tech portfolio's expected return and risk metrics. Which constraint level would you recommend for a 30-year horizon?",
+      "expected_tools": ["optimize_portfolio_tool", "get_available_universes"]
+    },
+    {
+      "name": "Risk strategy for Sarah",
+      "persona": "sarah_conservative",
+      "description": "Sarah Chen (58 years old, $500,000, 7 years to retirement) is worried about market downturns. She wants to compare: 1. Pure minimum volatility with conservative assets 2. Maximum Sharpe ratio with conservative assets (more growth potential). Given Sarah's low risk tolerance and short horizon, which strategy provides better downside protection while still generating some returns?",
+      "expected_tools": ["optimize_portfolio_tool", "compare_portfolios"]
+    }
+  ],
+  "config": {
+    "start_date": "2019-01-01",
+    "end_date": "2024-01-01",
+    "default_initial_value": 100000
+  }
+}

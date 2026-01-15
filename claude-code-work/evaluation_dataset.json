@@ -1,0 +1,337 @@
+{
+  "description": "Evaluation dataset for LLM translation of investor narratives to portfolio configurations",
+  "persona_distribution": {
+    "marcus_variants": 7,
+    "sarah_variants": 6,
+    "elena_variants": 7
+  },
+  "items": [
+    {
+      "id": "marcus_exact",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "I'm Marcus, 28 years old, just started my career as a software engineer. I have $50,000 to invest and want to maximize long-term growth. I can tolerate high volatility since I won't need this money for 30+ years. I believe in technology and want concentrated exposure to tech stocks."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "us_tech",
+        "time_horizon_years": 30,
+        "risk_tolerance": "high",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_exact",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "I'm Sarah, 58 years old, and planning to retire in 7 years. I have $500,000 saved and want stable income with capital preservation. I can't afford to lose more than 15% of my portfolio. I prefer US-based bond investments and don't want emerging market exposure."
+      },
+      "expected_output": {
+        "optimization_target": "min_volatility",
+        "universe": "conservative",
+        "time_horizon_years": 7,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "elena_exact",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "I'm Elena, 38 years old, and I want to build a portfolio for my children's education fund. My kids are 2 and 5 years old, so I have about 18 years. I have $150,000 to invest with moderate risk tolerance. I'd like global diversification and reasonable risk-adjusted returns. No single position should exceed 15% of the portfolio."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "global_diversified",
+        "time_horizon_years": 18,
+        "max_position": 0.15,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_younger",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "I'm 25 and just started my career in tech like Marcus. I want aggressive growth and can handle volatility. I'm interested in tech stocks and have a 35-year horizon."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "us_tech",
+        "time_horizon_years": 35,
+        "risk_tolerance": "high",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_earlier_retire",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "Similar to Sarah's situation - I'm 60 and retiring in 3 years. I need stable income and can't afford to lose money. Keep it safe with bonds."
+      },
+      "expected_output": {
+        "optimization_target": "min_volatility",
+        "universe": "conservative",
+        "time_horizon_years": 3,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "elena_10pct_limit",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Like Elena, I want a balanced portfolio for my kids' college fund in 15 years. Global diversification is important, and no single stock should exceed 10% of the portfolio."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "global_diversified",
+        "time_horizon_years": 15,
+        "max_position": 0.10,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_daytrader",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "Unlike Marcus's long-term approach, I'm a day trader interested in European markets. I want maximum returns and I'm comfortable with short selling."
+      },
+      "expected_output": {
+        "optimization_target": "max_return",
+        "universe": "european",
+        "time_horizon_years": 1,
+        "risk_tolerance": "high",
+        "allow_short": true
+      }
+    },
+    {
+      "id": "elena_target_return",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Similar goals to Elena but I'm looking for steady 8% annual returns with minimal risk. I have a 10-year horizon and prefer US large-cap stocks."
+      },
+      "expected_output": {
+        "optimization_target": "efficient_return",
+        "universe": "us_large_cap",
+        "time_horizon_years": 10,
+        "target_return": 0.08,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_asian",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "Like Marcus, I'm young and want exposure to growth markets, but I prefer Asian markets for the next 20 years. I'm comfortable with moderate risk."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "asian",
+        "time_horizon_years": 20,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "elena_house",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Unlike Elena's 18-year horizon, I'm saving for a house down payment in 5 years. I want growth but can't afford major losses. Maybe tech or large-cap?"
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "us_large_cap",
+        "time_horizon_years": 5,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_longer",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "Similar to Sarah but with a longer horizon - I'm a retiree who needs income from bonds. Very conservative, 10-year horizon."
+      },
+      "expected_output": {
+        "optimization_target": "min_volatility",
+        "universe": "conservative",
+        "time_horizon_years": 10,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "elena_25yr",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Like Elena, I'm 40 with moderate risk tolerance. I want a globally diversified portfolio for retirement in 25 years. No position should be more than 15%."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "global_diversified",
+        "time_horizon_years": 25,
+        "max_position": 0.15,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_aggressive",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "Marcus-style aggressive investor interested in growth stocks. I want to maximize Sharpe ratio over a 15-year period."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "aggressive",
+        "time_horizon_years": 15,
+        "risk_tolerance": "high",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_emergency",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "Even more conservative than Sarah - small emergency fund for 2 years. Super safe, bonds only."
+      },
+      "expected_output": {
+        "optimization_target": "min_volatility",
+        "universe": "conservative",
+        "time_horizon_years": 2,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_generational",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "Taking Marcus's approach to the extreme - I'm building generational wealth over 40 years. High risk tolerance, want tech exposure."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "us_tech",
+        "time_horizon_years": 40,
+        "risk_tolerance": "high",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "elena_12pct",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Similar to Elena but more ambitious - I want 12% returns and am willing to take on significant risk. 8-year horizon, prefer US markets."
+      },
+      "expected_output": {
+        "optimization_target": "efficient_return",
+        "universe": "us_large_cap",
+        "time_horizon_years": 8,
+        "target_return": 0.12,
+        "risk_tolerance": "high",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_european",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "Conservative like Sarah but interested in European exposure with low risk for 12 years. Diversified, no shorts."
+      },
+      "expected_output": {
+        "optimization_target": "min_volatility",
+        "universe": "european",
+        "time_horizon_years": 12,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "marcus_hedgefund",
+      "persona_type": "marcus",
+      "input": {
+        "narrative": "Professional trader unlike Marcus - I'm a hedge fund manager looking for arbitrage opportunities. Short selling is essential. Focus on tech stocks, 1-year horizon."
+      },
+      "expected_output": {
+        "optimization_target": "max_return",
+        "universe": "us_tech",
+        "time_horizon_years": 1,
+        "risk_tolerance": "high",
+        "allow_short": true
+      }
+    },
+    {
+      "id": "elena_60_40",
+      "persona_type": "elena",
+      "input": {
+        "narrative": "Elena-style balanced 60/40 portfolio for 20 years. Global diversification, max 20% in any position."
+      },
+      "expected_output": {
+        "optimization_target": "max_sharpe",
+        "universe": "global_diversified",
+        "time_horizon_years": 20,
+        "max_position": 0.20,
+        "risk_tolerance": "medium",
+        "allow_short": false
+      }
+    },
+    {
+      "id": "sarah_5pct",
+      "persona_type": "sarah",
+      "input": {
+        "narrative": "More conservative than Sarah - 5% target return with minimum risk. Conservative investor, 6 years."
+      },
+      "expected_output": {
+        "optimization_target": "efficient_return",
+        "universe": "conservative",
+        "time_horizon_years": 6,
+        "target_return": 0.05,
+        "risk_tolerance": "low",
+        "allow_short": false
+      }
+    }
+  ],
+  "rag_knowledge": [
+    {
+      "persona": "Sarah Chen",
+      "type": "example",
+      "content": "Conservative investor, 58 years old, 7-year horizon, $500,000. Optimization: min_volatility, Universe: conservative, Risk: low."
+    },
+    {
+      "persona": "Marcus Johnson",
+      "type": "example",
+      "content": "Growth investor, 28 years old, 30-year horizon, $50,000. Optimization: max_sharpe, Universe: us_tech, Risk: high."
+    },
+    {
+      "persona": "Elena Rodriguez",
+      "type": "example",
+      "content": "Balanced investor, 38 years old, 18-year horizon, $150,000, 15% max position. Optimization: max_sharpe, Universe: global_diversified, Risk: medium."
+    }
+  ],
+  "best_practices": {
+    "conservative": {
+      "profile": "Sarah Chen",
+      "optimization": "min_volatility",
+      "universes": ["conservative"],
+      "time_horizon": "3-10 years",
+      "priority": "Capital preservation"
+    },
+    "growth": {
+      "profile": "Marcus Johnson",
+      "optimization": "max_sharpe",
+      "universes": ["us_tech", "aggressive"],
+      "time_horizon": "20-40 years",
+      "priority": "Maximum long-term growth"
+    },
+    "balanced": {
+      "profile": "Elena Rodriguez",
+      "optimization": "max_sharpe with constraints",
+      "universes": ["global_diversified", "us_large_cap"],
+      "time_horizon": "10-20 years",
+      "priority": "Risk-adjusted returns"
+    }
+  }
+}
